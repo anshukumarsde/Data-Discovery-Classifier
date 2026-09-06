@@ -1,0 +1,12 @@
+# Python cache files
+__pycache__/
+*.pyc
+
+# Generated encryption key
+secret.key
+
+# Generated encryption files
+*.encrypted
+
+# PyCharm project files
+.idea/

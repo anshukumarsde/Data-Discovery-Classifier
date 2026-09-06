@@ -16,6 +16,7 @@ import os
 import sys
 import re
 import csv
+from cryptography.fernet import Fernet
 
 # Sensitive-data patterns
 EMAIL_PATTERN = r"\S+@\S+\.\S+"
@@ -38,6 +39,21 @@ def is_valid_card(card_number):
             digits[i] -= 9
     total = sum(digits)
     return total % 10 == 0
+
+# generate encryption key and create Fernet object
+key = Fernet.generate_key()
+cipher = Fernet(key)
+
+# Encrypt the file
+def encrypt_file(file_path):
+    # Read the original file as bytes
+    with open(file_path, "rb") as file:
+        data = file.read()
+    # Encrypt the file contents
+    encrypted_data = cipher.encrypt(data)
+    # Create a separate encrypted file
+    with open(file_path, "wb") as file:
+        file.write(encrypted_data)
 
 # Create a CSV report
 with open("report.csv", "w", newline="", encoding="utf-8") as report:
@@ -77,6 +93,10 @@ with open("report.csv", "w", newline="", encoding="utf-8") as report:
                     classification = "CONFIDENTIAL"
                 else:
                     classification = "INTERNAL"
+
+                # Encrypt files classified as CONFIDENTIAL
+                if classification == "CONFIDENTIAL":
+                    encrypt_file(file_path)
 
                 # Do not log the actual sensitive values because logs or reports
                 # could expose the sensitive information the scanner is meant to protect
