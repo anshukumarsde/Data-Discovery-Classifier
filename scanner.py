@@ -5,11 +5,16 @@ Walks through a directory, reads text-like files, and scans them
 for sensitive data such as email addresses, SSNs, credit card
 numbers, and phone numbers.
 
-test_data/subfolder/file3.txt is there to prove that os.walk() does scan nested
-directories recursively.
+Credit card numbers are validated using the Luhn checksum.
+Files are classified as INTERNAL, CONFIDENTIAL, or RESTRICTED.
+CONFIDENTIAL files are encrypted using Fernet encryption.
+Previously encrypted text files are scanned in memory so their report rows remain.
 
 Usage:
-    python scanner.py <directory>
+    py scanner.py <directory>
+
+Decrypt a file:
+    py scanner.py --decrypt <encrypted_file>
 """
 
 import os
@@ -27,6 +32,10 @@ PHONE_PATTERN = r"\d{3}-\d{3}-\d{4}"
 # File extensions that will be treated as text files
 TEXT_EXTENSIONS = [".txt", ".csv", ".json", ".xml", ".log"]
 
+# File used to store the encryption key
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+KEY_FILE = os.path.join(BASE_DIR, "secret.key")
+
 # Validates a card number using the Luhn checksum
 def is_valid_card(card_number):
     digits = []
@@ -40,20 +49,69 @@ def is_valid_card(card_number):
     total = sum(digits)
     return total % 10 == 0
 
-# generate encryption key and create Fernet object
-key = Fernet.generate_key()
-cipher = Fernet(key)
+# Creates an encryption key if one does not already exist
+def get_key():
+    if not os.path.exists(KEY_FILE):
+        key = Fernet.generate_key()
+        with open(KEY_FILE, "wb") as key_file:
+            key_file.write(key)
+    with open(KEY_FILE, "rb") as key_file:
+        return key_file.read()
 
-# Encrypt the file
+# Encrypts the file and removes the plaintext version
 def encrypt_file(file_path):
-    # Read the original file as bytes
+    key = get_key()
+    cipher = Fernet(key)
+    # Read the original file
     with open(file_path, "rb") as file:
         data = file.read()
-    # Encrypt the file contents
+    # Encrypt the contents
     encrypted_data = cipher.encrypt(data)
-    # Create a separate encrypted file
-    with open(file_path, "wb") as file:
+    encrypted_file_path = file_path + ".encrypted"
+    # Write the encrypted contents
+    with open(encrypted_file_path, "wb") as file:
         file.write(encrypted_data)
+    # Remove the plaintext file after encryption succeeds
+    os.remove(file_path)
+    print("File encrypted: ", file_path)
+
+# Decrypts an encrypted file
+def decrypt_file(file_path):
+    if not os.path.exists(KEY_FILE):
+        print("Error: secret.key was not found.")
+        return
+    with open(KEY_FILE, "rb") as key_file:
+        key = key_file.read()
+    cipher = Fernet(key)
+    # Read the encrypted file
+    with open(file_path, "rb") as file:
+        encrypted_data = file.read()
+    # Decrypt the contents
+    decrypted_data = cipher.decrypt(encrypted_data)
+    # Remove .encrypted from the file name
+    original_file_path = file_path.removesuffix(".encrypted")
+    # Restore the original file
+    with open(original_file_path, "wb") as file:
+        file.write(decrypted_data)
+    # Remove the encrypted version after decryption succeeds
+    os.remove(file_path)
+    print("File decrypted: ", original_file_path)
+
+# Make sure a command-line argument was provided
+if len(sys.argv) < 2:
+    print("Usage: py scanner.py <directory>")
+    sys.exit()
+
+# Decrypt mode
+if sys.argv[1] == "--decrypt":
+    if len(sys.argv) < 3:
+        print("Usage: py scanner.py --decrypt <encrypted_file>")
+        sys.exit()
+    decrypt_file(sys.argv[2])
+    sys.exit()
+
+# Directory to scan
+directory = sys.argv[1]
 
 # Create a CSV report
 with open("report.csv", "w", newline="", encoding="utf-8") as report:
@@ -68,13 +126,25 @@ with open("report.csv", "w", newline="", encoding="utf-8") as report:
         "Phone Number Count"
     ])
     # Walk through the directory and all subdirectories
-    for root, _, files in os.walk(sys.argv[1]):
+    for root, _, files in os.walk(directory):
         for file in files:
             file_path = os.path.join(root, file)
-            # Only scan text_like files
-            if os.path.splitext(file)[1].lower() in TEXT_EXTENSIONS:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
+            is_encrypted = file.endswith(".encrypted")
+            original_path = file_path.removesuffix(".encrypted") if is_encrypted else file_path
+            # Only scan text-like files
+            if os.path.splitext(original_path)[1].lower() in TEXT_EXTENSIONS:
+                # If both versions exist, scan the current plaintext only.
+                if is_encrypted and os.path.basename(original_path) in files:
+                    continue
+                if is_encrypted:
+                    # Read the existing key; never generate a replacement for decryption.
+                    with open(KEY_FILE, "rb") as key_file:
+                        cipher = Fernet(key_file.read())
+                    with open(file_path, "rb") as f:
+                        content = cipher.decrypt(f.read()).decode("utf-8")
+                else:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
                 emails = re.findall(EMAIL_PATTERN, content)
                 ssns = re.findall(SSN_PATTERN, content)
                 cards = re.findall(CARD_PATTERN, content)
@@ -94,18 +164,19 @@ with open("report.csv", "w", newline="", encoding="utf-8") as report:
                 else:
                     classification = "INTERNAL"
 
-                # Encrypt files classified as CONFIDENTIAL
-                if classification == "CONFIDENTIAL":
-                    encrypt_file(file_path)
-
                 # Do not log the actual sensitive values because logs or reports
                 # could expose the sensitive information the scanner is meant to protect
                 writer.writerow([
-                    file_path,
+                    original_path,
                     classification,
                     len(emails),
                     len(ssns),
                     len(valid_cards),
                     len(phone_numbers)
                 ])
-    print("Report written to report.csv")
+
+                # Encrypt files classified as CONFIDENTIAL
+                if classification == "RESTRICTED" and not is_encrypted:
+                    encrypt_file(file_path)
+
+print("Report written to report.csv")
