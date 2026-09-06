@@ -5,6 +5,9 @@ Walks through a directory, reads text-like files, and scans them
 for sensitive data such as email addresses, SSNs, credit card
 numbers, and phone numbers.
 
+test_data/subfolder/file3.txt is there to prove that os.walk() does scan nested
+directories recursively. 
+
 Usage:
     python scanner.py <directory>
 """
