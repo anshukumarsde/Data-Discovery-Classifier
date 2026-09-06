@@ -1,1 +1,2 @@
-My email address is john@example.com
+This is a normal internal document.
+There is no sensitive information in this file.
