@@ -6,7 +6,7 @@ for sensitive data such as email addresses, SSNs, credit card
 numbers, and phone numbers.
 
 test_data/subfolder/file3.txt is there to prove that os.walk() does scan nested
-directories recursively. 
+directories recursively.
 
 Usage:
     python scanner.py <directory>
@@ -25,6 +25,19 @@ PHONE_PATTERN = r"\d{3}-\d{3}-\d{4}"
 # File extensions that will be treated as text files
 TEXT_EXTENSIONS = [".txt", ".csv", ".json", ".xml", ".log"]
 
+# Validates a card number using the Luhn checksum
+def is_valid_card(card_number):
+    digits = []
+    for digit in card_number:
+        digits.append(int(digit))
+    # start from the second digit from the right
+    for i in range(len(digits)-2, -1, -2):
+        digits[i] *= 2
+        if digits[i] > 9:
+            digits[i] -= 9
+    total = sum(digits)
+    return total % 10 == 0
+
 for root, _, files in os.walk(sys.argv[1]):
     for file in files:
         file_path = os.path.join(root, file)
@@ -37,9 +50,15 @@ for root, _, files in os.walk(sys.argv[1]):
             cards = re.findall(CARD_PATTERN, content)
             phone_numbers = re.findall(PHONE_PATTERN, content)
 
+            # Only keep card numbers that pass the Luhn checksum
+            valid_cards = []
+            for card in cards:
+                if is_valid_card(card):
+                    valid_cards.append(card)
+
             print(file_path)
             print("Emails:", len(emails))
             print("SSNs:", len(ssns))
-            print("Credit Cards:", len(cards))
+            print("Credit Cards:", len(valid_cards))
             print("Phone Numbers:", len(phone_numbers))
             print()
