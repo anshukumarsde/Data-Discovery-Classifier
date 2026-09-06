@@ -1,2 +1,2 @@
-Customer email: john@example.com
-Customer phone: 614-555-1234
+Email: john@example.com
+Phone: 614-555-1234
