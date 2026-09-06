@@ -56,7 +56,16 @@ for root, _, files in os.walk(sys.argv[1]):
                 if is_valid_card(card):
                     valid_cards.append(card)
 
+            # Assign the file classification
+            if len(valid_cards) > 0 or len(ssns) > 0:
+                classification = "RESTRICTED"
+            elif len(emails) > 0 or len(phone_numbers) > 0:
+                classification = "CONFIDENTIAL"
+            else:
+                classification = "INTERNAL"
+
             print(file_path)
+            print("Classification:", classification)
             print("Emails:", len(emails))
             print("SSNs:", len(ssns))
             print("Credit Cards:", len(valid_cards))
